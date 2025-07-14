@@ -6,8 +6,8 @@ from joblib import load
 from streamlit import column_config
 
 # --- LOAD MODEL & PARAMS ---
-model = load('2025_Attendance_Predictions_Models_Project_ABC/sigmpoid_logdays_model_params_2025-07-14.joblib')
-sigmoid_parameters = pd.read_csv('2025_Attendance_Predictions_Models_Project_ABC/sigmoid_parameters.csv')
+model = load('sigmpoid_logdays_model_params_2025-07-14.joblib')
+sigmoid_parameters = pd.read_csv('sigmoid_parameters.csv')
 
 multipliers = pd.DataFrame({
     'range': [(0, 100), (100, 500), (500, 2000), (2000, 5000), (5000, 10000), (10000, np.inf)],
