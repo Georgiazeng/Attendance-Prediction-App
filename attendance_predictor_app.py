@@ -48,7 +48,7 @@ if "prediction_data" not in st.session_state:
         "Predicted Attendance", "Selected"
     ])
 kw_data = pd.DataFrame([
-        {"Keyword": "", "Volume": 0, "Weight": 0.0, "GrowthYears": 0}
+    {"Keyword": "", "Volume": 0, "Weight": 1.0, "GrowthYears": 0}
         for _ in range(5)
     ])
 if "keywords_table_data" not in st.session_state:
@@ -89,12 +89,15 @@ with st.form("input_form"):
 # --- ON SUBMIT ---
 if submitted:
     # Clean keyword entries
-    valid_keywords = keyword_df[keyword_df["Keyword"].str.strip() != ""]
+    valid_keywords = keyword_df[keyword_df["Keyword"].str.strip() != ""].copy()
     keywords = valid_keywords.to_dict("records")
     # Ensure correct dtypes
     valid_keywords["Volume"] = valid_keywords["Volume"].astype(float)
     valid_keywords["Weight"] = valid_keywords["Weight"].astype(float)
     valid_keywords["GrowthYears"] = valid_keywords["GrowthYears"].astype(int)
+    if not valid_keywords.empty and valid_keywords["Weight"].sum() == 0:
+        valid_keywords["Weight"] = 1.0
+        st.info("All keyword weights were 0, so weight was set to 1.0 for each keyword.")
     adjusted_volume = sum(
     float(row["Volume"]) * get_multiplier(float(row["Volume"]), int(row["GrowthYears"])) * float(row["Weight"])
     if float(row["GrowthYears"]) > 0 else float(row["Volume"]) * float(row["Weight"])
@@ -109,12 +112,22 @@ if submitted:
     log_days_saturated = hybrid_log_linear(np.array([log_days]), k_high=np.log1p(90))[0]
     search_bounded_val = sigmoid_search(adjusted_volume)
 
-    log_attendance = model.predict(pd.DataFrame({
+    # Build exog matrix to match the formula-expanded statsmodels training columns.
+    e1 = 1.0 if era_code == 1 else 0.0
+    e2 = 1.0 if era_code == 2 else 0.0
+    g1 = 1.0 if gallery_code == 1 else 0.0
+    exog_df = pd.DataFrame({
+        'Intercept': [1.0],
+        'C(era_encoded)[T.1]': [e1],
+        'C(era_encoded)[T.2]': [e2],
+        'C(gallery_type_encoded)[T.1]': [g1],
+        'C(era_encoded)[T.1]:C(gallery_type_encoded)[T.1]': [e1 * g1],
+        'C(era_encoded)[T.2]:C(gallery_type_encoded)[T.1]': [e2 * g1],
         'sigmoid_search_volume_with_growth': [search_bounded_val],
-        'log_saturating_days': [log_days_saturated],
-        'era_encoded': [era_code],
-        'gallery_type_encoded': [gallery_code]
-    }))
+        'log_saturating_days': [log_days_saturated]
+    })
+
+    log_attendance = model.model.predict(model.params, exog_df)
 
     attendance = np.exp(log_attendance)[0]
     attendance_final = attendance * (1 + ra_drive / 100)
